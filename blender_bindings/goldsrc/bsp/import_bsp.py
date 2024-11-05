@@ -418,7 +418,7 @@ class BSP:
         inner_cone = (cone or inner_cone) * 2
         radius = 1
         light = self._load_lights(entity_data.get('targetname', f'{entity_class}'),
-                                  'SPOT', watts * 100, color, inner_cone, radius,
+                                  'SPOT', watts * 100 * self.scale, color, inner_cone, radius,
                                   parent_collection=entity_collection, entity=entity_data)
         light.location = origin
         light.rotation_euler = angles
@@ -431,7 +431,7 @@ class BSP:
         color = parse_hammer_vector(entity_data['_light'])
         *color, watts = convert_light_value(color)
         light = self._load_lights(entity_data.get('targetname', f'{entity_class}'),
-                                  'POINT', watts * 100, color, 0.1,
+                                  'POINT', watts * 100 * self.scale, color, 0.1,
                                   parent_collection=entity_collection, entity=entity_data)
         light.location = origin
 
@@ -444,7 +444,7 @@ class BSP:
         color = parse_hammer_vector(entity_data['_light'])
         *color, watts = convert_light_value(color)
         light = self._load_lights(entity_data.get('targetname', f'{entity_class}'),
-                                  'SUN', watts, Vector(color) * 100, 0.1,
+                                  'SUN', watts * self.scale, Vector(color) * 100, 0.1,
                                   parent_collection=entity_collection, entity=entity_data)
         light.location = origin
         light.rotation_euler = angles
