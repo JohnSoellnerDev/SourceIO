@@ -1,8 +1,24 @@
+import contextlib
 import random
 
 import bpy
 
 from SourceIO.library.utils.tiny_path import TinyPath
+
+
+@contextlib.contextmanager
+def pause_view_layer_update():
+    from bpy.ops import _BPyOpsSubModOp
+    view_layer_update = _BPyOpsSubModOp._view_layer_update
+
+    def dummy_view_layer_update(context):
+        pass
+
+    _BPyOpsSubModOp._view_layer_update = dummy_view_layer_update
+    try:
+        yield
+    finally:
+        _BPyOpsSubModOp._view_layer_update = view_layer_update
 
 
 def is_blender_4():
@@ -11,6 +27,12 @@ def is_blender_4():
 
 def is_blender_4_1():
     return bpy.app.version >= (4, 1, 0)
+
+def is_blender_4_2():
+    return bpy.app.version >= (4, 2, 0)
+
+def is_blender_4_3():
+    return bpy.app.version >= (4, 3, 0)
 
 
 def find_layer_collection(layer_collection, name):

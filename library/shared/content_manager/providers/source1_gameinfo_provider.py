@@ -5,9 +5,8 @@ from SourceIO.library.shared.content_manager.provider import ContentProvider, is
 from SourceIO.library.shared.content_manager.providers import register_provider
 from SourceIO.library.shared.content_manager.providers.loose_files import LooseFilesContentProvider
 from SourceIO.library.shared.content_manager.providers.vpk_provider import VPKContentProvider
-from SourceIO.library.utils import Buffer, FileBuffer
+from SourceIO.library.utils import Buffer, FileBuffer, TinyPath
 from SourceIO.library.utils.s1_keyvalues import KVParser
-from SourceIO.library.utils.tiny_path import TinyPath
 from SourceIO.logger import SourceLogMan
 
 log_manager = SourceLogMan()
@@ -15,30 +14,6 @@ logger = log_manager.get_logger('GameInfoProvider')
 
 
 class Source1GameInfoProvider(ContentProvider):
-    def check(self, filepath: TinyPath) -> bool:
-        for mount in self.mount:
-            if mount.check(filepath):
-                return True
-        return False
-
-    def get_relative_path(self, filepath: TinyPath):
-        if is_relative_to(filepath, self.root):
-            rel_path = filepath.relative_to(self.root)
-            if self.check(rel_path):
-                return rel_path
-
-    def get_provider_from_path(self, filepath):
-        if self.check(filepath):
-            return self
-
-    def get_steamid_from_asset(self, asset_path: TinyPath) -> SteamAppId | None:
-        if self.check(asset_path):
-            return self.steam_id
-
-    @property
-    def name(self) -> str:
-        return self.filesystem.get("game", self.root.stem)
-
     def __init__(self, filepath: TinyPath):
         super().__init__(filepath)
         with FileBuffer(filepath, "r") as f:
@@ -46,7 +21,7 @@ class Source1GameInfoProvider(ContentProvider):
         if header != "gameinfo":
             raise ValueError("Invalid gameinfo header")
         self.filesystem: dict[str, Any] = gameinfo_data["filesystem"]
-        self._steamapp_id = SteamAppId(int(self.filesystem["steamappid"]))
+        self._steamapp_id = SteamAppId(int(self.filesystem.get("steamappid", 0)))
         self.mount: list[ContentProvider] = []
 
         mods_folder = self.root.parent
@@ -67,7 +42,10 @@ class Source1GameInfoProvider(ContentProvider):
                     continue
                 if search_path.endswith(".vpk"):
                     tmp = TinyPath(search_path)
-                    search_path = tmp.with_name(tmp.stem + "_dir")
+                    if (mods_folder / tmp.with_name(tmp.stem + "_dir")).resolve().exists():
+                        search_path = tmp.with_name(tmp.stem + "_dir")
+                    else:
+                        search_path = TinyPath(search_path)
                 mod_folder = (mods_folder / search_path).resolve()
                 if mod_folder.exists():
                     if mod_folder.is_file():
@@ -81,6 +59,30 @@ class Source1GameInfoProvider(ContentProvider):
                     if mod_provider not in self.mount:
                         logger.info(f"Mounted: {mod_provider}")
                         self.mount.append(mod_provider)
+
+    @property
+    def name(self) -> str:
+        return self.filesystem.get("game", self.root.stem)
+
+    def check(self, filepath: TinyPath) -> bool:
+        for mount in self.mount:
+            if mount.check(filepath):
+                return True
+        return False
+
+    def get_relative_path(self, filepath: TinyPath):
+        if is_relative_to(filepath, self.root):
+            rel_path = filepath.relative_to(self.root)
+            if self.check(rel_path):
+                return rel_path
+
+    def get_provider_from_path(self, filepath):
+        if self.check(filepath):
+            return self
+
+    def get_steamid_from_asset(self, asset_path: TinyPath) -> SteamAppId | None:
+        if self.check(asset_path):
+            return self.steam_id
 
     def find_file(self, filepath: TinyPath) -> Optional[Buffer]:
         for mount in self.mount:

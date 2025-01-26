@@ -4,7 +4,7 @@ from valvefgd import Fgd, FgdEntity, FgdParse
 from SourceIO.library.utils.tiny_path import TinyPath
 
 os.environ['NO_BPY'] = '1'
-from ...shared.content_manager.manager import ContentManager
+from ...content_manager import ContentManager
 
 
 def parse_int_vector(string):
@@ -12,6 +12,8 @@ def parse_int_vector(string):
 
 
 def parse_float_vector(string):
+    if string is None:
+        return [0.0, 0.0, 0.0]
     return [float(val) for val in string.replace('  ', ' ').split(' ')]
 
 
@@ -53,6 +55,8 @@ def parse_int_vector(string):
 
 
 def parse_float_vector(string):
+    if string is None:
+        return [0.0, 0.0, 0.0]
     return [float(val) for val in string.replace('  ', ' ').split(' ')]
 
 

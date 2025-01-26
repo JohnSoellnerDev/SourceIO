@@ -1,6 +1,6 @@
 from enum import Enum
 
-from SourceIO.library.shared.content_manager.manager import ContentManager
+from SourceIO.library.shared.content_manager import ContentManager
 from SourceIO.library.utils.fgd_parser.fgd_classes import FGDEntity
 from SourceIO.library.utils.tiny_path import TinyPath
 
@@ -586,6 +586,8 @@ def parse_int_vector(string):
 
 
 def parse_float_vector(string):
+    if string is None:
+        return [0.0, 0.0, 0.0]
     return [float(val) for val in string.replace('  ', ' ').split(' ')]
     
 """)

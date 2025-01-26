@@ -1,11 +1,10 @@
 import fnmatch
 from typing import Iterator, Optional
 
-from SourceIO.library.archives.gma import open_gma
-from SourceIO.library.shared.content_manager.provider import ContentProvider
-from SourceIO.library.utils import Buffer
+from SourceIO.library.archives.gma import GMA
 from SourceIO.library.shared.app_id import SteamAppId
-from SourceIO.library.utils.tiny_path import TinyPath
+from SourceIO.library.shared.content_manager.provider import ContentProvider
+from SourceIO.library.utils import Buffer, TinyPath
 
 
 class GMAContentProvider(ContentProvider):
@@ -36,12 +35,13 @@ class GMAContentProvider(ContentProvider):
         super().__init__(filepath)
         self._override_steamid = override_steamid
         self._initialized = False
-        self.gma_archive = None
+        self.gma_archive = GMA(filepath)
 
     def _init(self):
         if self._initialized:
             return
-        self.gma_archive = open_gma(self.filepath)
+        self.gma_archive.read()
+        self._initialized = True
 
     def glob(self, pattern: str) -> Iterator[tuple[TinyPath, Buffer]]:
         self._init()

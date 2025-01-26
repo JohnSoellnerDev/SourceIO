@@ -1,5 +1,6 @@
-from ...shader_base import Nodes
-from ..source1_shader_base import Source1ShaderBase
+from SourceIO.blender_bindings.material_loader.shader_base import Nodes
+from SourceIO.blender_bindings.material_loader.shaders.source1_shader_base import Source1ShaderBase
+from SourceIO.blender_bindings.utils.bpy_utils import is_blender_4_3
 
 
 class UnlitGeneric(Source1ShaderBase):
@@ -49,8 +50,9 @@ class UnlitGeneric(Source1ShaderBase):
         material_output = self.create_node(Nodes.ShaderNodeOutputMaterial)
         shader = self.create_node(Nodes.ShaderNodeEmission, self.SHADER)
         if self.translucent or self.alphatest:
-            self.bpy_material.blend_method = 'HASHED'
-            self.bpy_material.shadow_method = 'HASHED'
+            if not is_blender_4_3():
+                self.bpy_material.blend_method = 'HASHED'
+                self.bpy_material.shadow_method = 'HASHED'
             mix_node = self.create_node(Nodes.ShaderNodeMixShader)
             transparent_node = self.create_node(Nodes.ShaderNodeBsdfTransparent)
             self.connect_nodes(shader.outputs['Emission'], mix_node.inputs[2])

@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TextIO, Union
 
 from SourceIO.library.utils.tiny_path import TinyPath
-from ...logger import SourceLogMan
+from SourceIO.logger import SourceLogMan
 
 log_manager = SourceLogMan()
 logger = log_manager.get_logger('Utilities::KeyValue Parser')
@@ -178,7 +178,7 @@ class KVParser(KVReader):
         return pairs if len(pairs) > 1 else pairs[0] if pairs else None
 
     def parse_pair(self):
-        key = self._match(KVToken.STR)[1].lower()
+        key = str(self._match(KVToken.STR,KVToken.NUM)[1]).lower()
 
         if self._match(KVToken.PLUS, required=False, consume=False):
             key = [key]

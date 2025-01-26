@@ -1,7 +1,9 @@
 from pprint import pformat
 
-from ..source2_shader_base import Source2ShaderBase
-from ...shader_base import Nodes
+from SourceIO.blender_bindings.material_loader.shader_base import Nodes
+from SourceIO.blender_bindings.material_loader.shaders.source2_shader_base import Source2ShaderBase
+from SourceIO.blender_bindings.utils.bpy_utils import is_blender_4_3
+from SourceIO.library.source2.blocks.kv3_block import KVBlock
 
 
 class CSGOUnlitGeneric(Source2ShaderBase):
@@ -13,7 +15,7 @@ class CSGOUnlitGeneric(Source2ShaderBase):
         material_output = self.create_node(Nodes.ShaderNodeOutputMaterial)
         shader = self.create_node(Nodes.ShaderNodeBsdfPrincipled, self.SHADER)
         self.connect_nodes(shader.outputs['BSDF'], material_output.inputs['Surface'])
-        data, = self._material_resource.get_data_block(block_name='DATA')
+        data = self._material_resource.get_block(KVBlock,block_name='DATA')
         self.logger.info(pformat(dict(data)))
 
         color_texture = self._get_texture("g_tColor", (1, 1, 1, 1))
@@ -44,15 +46,18 @@ class CSGOUnlitGeneric(Source2ShaderBase):
         #     self.connect_nodes(metalness_conv.outputs[1], shader.inputs["Metallic"])
 
         if self._material_resource.get_int_property("F_ALPHA_TEST", 0):
-            self.bpy_material.blend_method = 'BLEND'
-            self.bpy_material.shadow_method = 'CLIP'
-            self.bpy_material.alpha_threshold = self._material_resource.get_float_property("g_flAlphaTestReference", 0.5)
+            if not is_blender_4_3():
+                self.bpy_material.blend_method = 'BLEND'
+                self.bpy_material.shadow_method = 'CLIP'
+                self.bpy_material.alpha_threshold = self._material_resource.get_float_property("g_flAlphaTestReference", 0.5)
             self.connect_nodes(color_texture.outputs[1], shader.inputs["Alpha"])
         if self._material_resource.get_int_property("F_OVERLAY", 0):
-            self.bpy_material.blend_method = 'BLEND'
-            self.bpy_material.shadow_method = 'CLIP'
+            if not is_blender_4_3():
+                self.bpy_material.blend_method = 'BLEND'
+                self.bpy_material.shadow_method = 'CLIP'
             self.connect_nodes(color_texture.outputs[1], shader.inputs["Alpha"])
         if self._material_resource.get_int_property("F_BLEND_MODE", 0):
-            self.bpy_material.blend_method = 'BLEND'
-            self.bpy_material.shadow_method = 'CLIP'
+            if not is_blender_4_3():
+                self.bpy_material.blend_method = 'BLEND'
+                self.bpy_material.shadow_method = 'CLIP'
             self.connect_nodes(color_texture.outputs[1], shader.inputs["Alpha"])

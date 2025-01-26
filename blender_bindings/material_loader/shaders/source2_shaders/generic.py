@@ -1,10 +1,8 @@
-from typing import Optional
-
-import bpy
 import numpy as np
 
-from ...shader_base import Nodes
-from ..source2_shader_base import Source2ShaderBase
+from SourceIO.blender_bindings.material_loader.shader_base import Nodes
+from SourceIO.blender_bindings.material_loader.shaders.source2_shader_base import Source2ShaderBase
+from SourceIO.blender_bindings.utils.bpy_utils import is_blender_4_3, is_blender_4
 
 
 class Generic(Source2ShaderBase):
@@ -70,7 +68,12 @@ class Generic(Source2ShaderBase):
         shader = self.create_node(Nodes.ShaderNodeBsdfPrincipled, self.SHADER)
         self.connect_nodes(shader.outputs['BSDF'], material_output.inputs['Surface'])
         shader.inputs['Roughness'].default_value = self.roughness
-        shader.inputs['Specular'].default_value = self.specular
+
+        if is_blender_4():
+            shader.inputs['Specular IOR Level'].default_value = self.specular
+        else:
+            shader.inputs['Specular'].default_value = self.specular
+
         color_texture = self.color_texture
         normal_texture = self.normal_texture
 
@@ -91,8 +94,9 @@ class Generic(Source2ShaderBase):
             self.connect_nodes(albedo_node.outputs['Color'], shader.inputs['Base Color'])
 
         if self.translucent or self.alpha_test:
-            self.bpy_material.blend_method = 'HASHED'
-            self.bpy_material.shadow_method = 'HASHED'
+            if not is_blender_4_3():
+                self.bpy_material.blend_method = 'HASHED'
+                self.bpy_material.shadow_method = 'HASHED'
             self.connect_nodes(albedo_node.outputs['Alpha'], shader.inputs['Alpha'])
         elif self.metalness:
             self.connect_nodes(albedo_node.outputs['Alpha'], shader.inputs['Metallic'])

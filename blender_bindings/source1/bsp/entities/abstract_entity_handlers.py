@@ -6,22 +6,20 @@ import bpy
 import numpy as np
 from mathutils import Euler
 
-from ....operators.import_settings_base import BSPOptions
-from .....library.shared.content_manager.provider import \
-    ContentProvider
-from .....library.source1.bsp.bsp_file import BSPFile
-from .....library.source1.bsp.datatypes.face import Face
-from .....library.source1.bsp.datatypes.model import Model
-from .....library.source1.bsp.datatypes.texture_data import TextureData
-from .....library.source1.bsp.datatypes.texture_info import TextureInfo
-from .....library.source1.vmt import VMT
-from .....library.utils.math_utilities import SOURCE1_HAMMER_UNIT_TO_METERS
-from .....library.utils.path_utilities import path_stem
-from .....library.utils.tiny_path import TinyPath
-from .....logger import SourceLogMan
-from ....utils.bpy_utils import add_material, get_or_create_collection, get_or_create_material
-from ...vtf import import_texture
-from .base_entity_classes import *
+from SourceIO.blender_bindings.source1.bsp.entities.base_entity_classes import *
+from SourceIO.blender_bindings.source1.vtf import import_texture
+from SourceIO.blender_bindings.operators.import_settings_base import Source1BSPSettings
+from SourceIO.blender_bindings.utils.bpy_utils import add_material, get_or_create_collection, get_or_create_material
+from SourceIO.library.source1.bsp.bsp_file import BSPFile
+from SourceIO.library.source1.bsp.datatypes.face import Face
+from SourceIO.library.source1.bsp.datatypes.model import Model
+from SourceIO.library.source1.bsp.datatypes.texture_data import TextureData
+from SourceIO.library.source1.bsp.datatypes.texture_info import TextureInfo
+from SourceIO.library.source1.vmt import VMT
+from SourceIO.library.utils.math_utilities import SOURCE1_HAMMER_UNIT_TO_METERS
+from SourceIO.library.utils.path_utilities import path_stem
+from SourceIO.library.utils.tiny_path import TinyPath
+from SourceIO.logger import SourceLogMan
 
 strip_patch_coordinates = re.compile(r"_-?\d+_-?\d+_-?\d+.*$")
 log_manager = SourceLogMan()
@@ -75,8 +73,11 @@ class AbstractEntityHandler:
         self._entites = self._bsp.get_lump('LUMP_ENTITIES').entities
         self._handled_paths = []
         self._entity_by_name_cache = {}
+        self._world_geometry_name = ""
+        self.settings: Source1BSPSettings | None = None
 
-    def load_entities(self, settings: BSPOptions):
+    def load_entities(self, settings: Source1BSPSettings):
+        self.settings = settings
         entity_lump = self._bsp.get_lump('LUMP_ENTITIES')
         for entity_data in entity_lump.entities:
             entity_class: str = entity_data['classname']
@@ -107,13 +108,13 @@ class AbstractEntityHandler:
             entity_class_obj = self._get_class(entity_class)
             entity_object = entity_class_obj(entity_data)
             handler_function = getattr(self, f'handle_{entity_class}')
-            # try:
-            handler_function(entity_object, entity_data)
-            # except ValueError as e:
-            #     import traceback
-            #     self.logger.error(f'Exception during handling {entity_class} entity: {e.__class__.__name__}("{e}")')
-            #     self.logger.error(traceback.format_exc())
-            #     return False
+            try:
+                handler_function(entity_object, entity_data)
+            except ValueError as e:
+                import traceback
+                self.logger.error(f'Exception during handling {entity_class} entity: {e.__class__.__name__}("{e}")')
+                self.logger.error(traceback.format_exc())
+                return False
             return True
         return False
 
@@ -152,11 +153,25 @@ class AbstractEntityHandler:
         remapped = dict(zip(vertex_ids, tmp2))
 
         material_lookup_table = {}
-        for texture_info in sorted(set(material_ids)):
-            texture_info = bsp_textures_info[texture_info]
+        skippable_materials = set()
+        for texture_info_id in sorted(set(material_ids)):
+            texture_info = bsp_textures_info[texture_info_id]
             texture_data = bsp_textures_data[texture_info.texture_data_id]
             material_name = self._get_string(texture_data.name_id)
-            material_name = strip_patch_coordinates.sub("", material_name)
+            if self.settings and self.settings.import_textures:
+                material_file = self.content_manager.find_file(TinyPath("materials") / (material_name + ".vmt"))
+                if material_file:
+                    vmt = VMT(material_file, material_name, self.content_manager)
+                    material_name = strip_patch_coordinates.sub("", material_name)
+                    if vmt.get_int("$abovewater", 1) == 0:
+                        skippable_materials.add(texture_info_id)
+                else:
+                    material_name = strip_patch_coordinates.sub("", material_name)
+                    material_file = self.content_manager.find_file(TinyPath("materials") / (material_name + ".vmt"))
+                    if material_file:
+                        vmt = VMT(material_file, material_name, self.content_manager)
+                        if vmt.get_int("$abovewater", 1) == 0:
+                            skippable_materials.add(texture_info_id)
             material = get_or_create_material(path_stem(material_name), material_name)
             material_lookup_table[texture_data.name_id] = add_material(material, mesh_obj)
 
@@ -166,6 +181,9 @@ class AbstractEntityHandler:
         for map_face in bsp_faces[model.first_face:model.first_face + model.face_count]:
             if map_face.disp_info_id != -1:
                 continue
+            if map_face.tex_info_id in skippable_materials:
+                continue
+
             uvs = {}
             luvs = {}
             face = []

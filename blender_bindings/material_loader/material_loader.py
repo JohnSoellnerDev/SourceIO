@@ -3,11 +3,11 @@ from typing import Type
 
 import bpy
 
-from ...library.models.mdl.v10.structs.texture import StudioTexture
-from ...library.shared.content_manager.manager import ContentManager
-from ...library.source1.vmt import VMT
-from ...library.source2 import CompiledMaterialResource
-from ...logger import SourceLogMan
+from SourceIO.library.models.mdl.v10.structs.texture import StudioTexture
+from SourceIO.library.shared.content_manager import ContentManager
+from SourceIO.library.source1.vmt import VMT
+from SourceIO.library.source2 import CompiledMaterialResource
+from SourceIO.logger import SourceLogMan
 from .shader_base import ShaderBase
 from .shaders.goldsrc_shader_base import GoldSrcShaderBase
 from .shaders.source1_shader_base import Source1ShaderBase
@@ -16,6 +16,8 @@ from .shaders.source2_shaders.dummy import DummyShader
 
 # noinspection PyUnresolvedReferences
 from .shaders import source1_shaders, source2_shaders, goldsrc_shaders
+from SourceIO.library.source2.blocks.kv3_block import KVBlock
+from ...library.source2.compiled_resource import DATA_BLOCK
 
 log_manager = SourceLogMan()
 logger = log_manager.get_logger('MaterialLoader')
@@ -49,7 +51,7 @@ class Source1MaterialLoader(MaterialLoaderBase):
         material['shader_type'] = handler._vmt.shader
         try:
             params = handler._vmt.data.to_dict()
-            #if (dx90 := (params.get('>=dx90') or params.get('>=DX90'))):
+            # if (dx90 := (params.get('>=dx90') or params.get('>=DX90'))):
             #    for key, value in dx90.items():
             #        params[key] = value
             #    # unravel it a bit, because dx90 is how we usually see the materials
@@ -105,7 +107,7 @@ class Source2MaterialLoader(MaterialLoaderBase):
             logger.info(f'Skipping loading of {material} as it already loaded')
             return
 
-        data, = self.material_resource.get_data_block(block_name='DATA')
+        data = self.material_resource.get_block(KVBlock, block_name="DATA")
         if not data:
             return
         shader = data['m_shaderName']

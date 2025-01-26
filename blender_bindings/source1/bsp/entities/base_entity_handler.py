@@ -10,7 +10,7 @@ from SourceIO.blender_bindings.material_loader.material_loader import Source1Mat
 from SourceIO.blender_bindings.material_loader.shaders.source1_shaders.sky import Skybox
 from SourceIO.blender_bindings.source1.vtf import load_skybox_texture
 from SourceIO.blender_bindings.utils.bpy_utils import add_material, get_or_create_material
-from SourceIO.library.source1.vtf.cubemap_to_envmap import SkyboxException
+from SourceIO.library.source1.vtf import SkyboxException
 from SourceIO.library.utils.math_utilities import ensure_length, lerp_vec
 from SourceIO.library.utils.path_utilities import path_stem
 from SourceIO.library.utils.tiny_path import TinyPath
@@ -289,6 +289,7 @@ class BaseEntityHandler(AbstractEntityHandler):
 
     def handle_worldspawn(self, entity: worldspawn, entity_raw: dict):
         world = self._load_brush_model(0, 'world_geometry')
+        self._world_geometry_name = world.name
         self._set_entity_data(world, {'entity': entity_raw})
         self.parent_collection.objects.link(world)
         try:
@@ -674,7 +675,7 @@ class BaseEntityHandler(AbstractEntityHandler):
         point_start = (*location_start, 1)
         point_end = (*location_end, 1)
         point_mid = lerp_vec(point_start, point_end, 0.5)
-        point_mid[2] -= sum(slack * 0.0002 for _ in range(slack))
+        point_mid[2] -= sum(slack * 0.0002 for _ in range(int(slack)))
 
         curve_path.points.add(2)
         curve_path.points[0].co = point_start
@@ -773,11 +774,47 @@ class BaseEntityHandler(AbstractEntityHandler):
         mesh_data = obj.data
         mesh_data.from_pydata(verts, [], [[0, 1, 2, 3]])
 
+        origin = Vector(entity.origin)
+        if self._world_geometry_name != "":
+            world_geometry = bpy.data.objects[self._world_geometry_name]
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            world_geometry_eval = world_geometry.evaluated_get(depsgraph)
+            closest_distance = 1.70141e+38
+            closest_hit = None
+            ray_directions = [
+                Vector((0, 0, -1)),  # Down
+                Vector((0, 0, 1)),  # Up
+                Vector((0, -1, 0)),  # Backward
+                Vector((0, 1, 0)),  # Forward
+                Vector((-1, 0, 0)),  # Left
+                Vector((1, 0, 0)),  # Right
+            ]
+
+            for direction in ray_directions:
+                scaled_origin = origin * self.scale
+                hit, location, normal, index = world_geometry_eval.ray_cast(scaled_origin, direction, distance=closest_distance,
+                                                                            depsgraph=depsgraph)
+
+                if hit:
+                    distance = (scaled_origin - location).length
+                    if distance < closest_distance:
+                        closest_distance = distance
+                        closest_hit = (location, normal)
+
+            if closest_hit:
+                location, normal = closest_hit
+
+                target_direction = -normal
+                rotation = target_direction.to_track_quat('Y', 'Z').to_euler()
+                obj.rotation_euler = rotation
+
+                origin += (normal * 0.01) / self.scale
+
         uv_data = mesh_data.uv_layers.new().data
         material = get_or_create_material(path_stem(material_name), material_name)
         add_material(material, obj)
 
-        self._set_location_and_scale(obj, entity.origin)
+        self._set_location_and_scale(obj, origin)
         self._set_entity_data(obj, {'entity': entity_raw})
         self._put_into_collection('infodecal', obj)
 

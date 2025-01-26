@@ -36,15 +36,13 @@ class Buffer(abc.ABC, io.RawIOBase):
         offset = self.read_int32()
         if offset:
             with self.read_from_offset(entry + offset):
-                return self.read_ascii_string()
+                return self.read_nt_string()
         else:
             return ""
 
     def read_source2_string(self):
-        entry = self.tell()
-        offset = self.read_int32()
-        with self.read_from_offset(entry + offset):
-            return self.read_ascii_string()
+        with self.read_from_offset(self.tell() + self.read_int32()):
+            return self.read_nt_string()
 
     @property
     @abc.abstractmethod
@@ -66,6 +64,8 @@ class Buffer(abc.ABC, io.RawIOBase):
     def align(self, align_to):
         value = self.tell()
         padding = (align_to - value % align_to) % align_to
+        if padding + self.tell() > self.size():
+            return
         self.seek(padding, io.SEEK_CUR)
 
     def skip(self, size):
@@ -81,42 +81,36 @@ class Buffer(abc.ABC, io.RawIOBase):
         return self.tell() + self.read_uint32()
 
     def read_uint64(self):
-        return self._read('Q')
+        return unpack(self._endian + "Q", self.read(8))[0]
 
     def read_int64(self):
-        return self._read('q')
+        return unpack(self._endian + "q", self.read(8))[0]
 
     def read_uint32(self):
-        return self._read('I')
+        return unpack(self._endian + "I", self.read(4))[0]
 
     def read_int32(self):
-        return self._read('i')
+        return unpack(self._endian + "i", self.read(4))[0]
 
     def read_uint16(self):
-        return self._read('H')
+        return unpack(self._endian + "H", self.read(2))[0]
 
     def read_int16(self):
-        return self._read('h')
+        return unpack(self._endian + "h", self.read(2))[0]
 
     def read_uint8(self):
-        return self._read('B')
+        return unpack(self._endian + "B", self.read(1))[0]
 
     def read_int8(self):
-        return self._read('b')
+        return unpack(self._endian + "b", self.read(1))[0]
 
     def read_float(self):
-        return self._read('f')
+        return unpack(self._endian + "f", self.read(4))[0]
 
     def read_double(self):
-        return self._read('d')
+        return unpack(self._endian + "d", self.read(8))[0]
 
-    def read_ascii_string(self, length: Optional[int] = None):
-        if length is not None:
-            buffer = self.read(length).strip(b'\x00').rstrip(b'\x00')
-            if b'\x00' in buffer:
-                buffer = buffer[:buffer.index(b'\x00')]
-            return buffer.decode('latin', errors='replace')
-
+    def read_nt_string(self):
         buffer = bytearray()
 
         while True:
@@ -132,6 +126,15 @@ class Buffer(abc.ABC, io.RawIOBase):
             if chunk_end >= 0:
                 self.seek(-(len(chunk) - chunk_end - 1), io.SEEK_CUR)
                 return buffer.decode('latin', errors='replace')
+
+    def read_ascii_string(self, length: Optional[int] = None):
+        if length is not None:
+            buffer = self.read(length).strip(b'\x00').rstrip(b'\x00')
+            if b'\x00' in buffer:
+                buffer = buffer[:buffer.index(b'\x00')]
+            return buffer.decode('latin', errors='replace')
+
+        return self.read_nt_string()
 
     def read_fourcc(self):
         return self.read_ascii_string(4)
@@ -188,6 +191,10 @@ class Buffer(abc.ABC, io.RawIOBase):
         with self.save_current_offset():
             return self.read_uint32()
 
+    def peek_fmt(self, fmt):
+        with self.save_current_offset():
+            return self.read_fmt(fmt)
+
     def peek(self, size: int):
         with self.save_current_offset():
             return self.read(size)
@@ -220,7 +227,7 @@ class Buffer(abc.ABC, io.RawIOBase):
 
 class MemoryBuffer(Buffer):
 
-    def __init__(self, buffer: Union[bytes, bytearray, memoryview]):
+    def __init__(self, buffer: bytes | bytearray | memoryview):
         super().__init__()
         self._buffer = memoryview(buffer)
         self._offset = 0
@@ -285,6 +292,12 @@ class MemoryBuffer(Buffer):
 
     def close(self) -> None:
         self._buffer = None
+
+    def read_nt_string(self: 'MemoryBuffer'):
+        end = self._buffer.obj.index(b"\x00", self._offset)
+        string = self._buffer[self._offset:end]
+        self._offset+=end-self._offset+1
+        return string.tobytes().decode("utf8")
 
     def slice(self, offset: Optional[int] = None, size: int = -1) -> 'MemorySlice':
         if offset is None:
@@ -377,4 +390,4 @@ class Readable(Protocol):
         ...
 
 
-__all__ = ['Buffer', 'MemoryBuffer', 'WritableMemoryBuffer', 'FileBuffer', 'Readable']
+__all__ = ['Buffer', 'MemoryBuffer', 'WritableMemoryBuffer', 'FileBuffer', 'MemorySlice', 'Readable']

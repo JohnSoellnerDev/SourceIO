@@ -5,6 +5,13 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from SourceIO.blender_bindings.goldsrc.bsp.entity_handlers import entity_handlers
+from SourceIO.blender_bindings.material_loader.shaders.goldsrc_shaders.goldsrc_shader import GoldSrcShader
+from SourceIO.blender_bindings.material_loader.shaders.goldsrc_shaders.goldsrc_shader_mode1 import GoldSrcShaderMode1
+from SourceIO.blender_bindings.material_loader.shaders.goldsrc_shaders.goldsrc_shader_mode2 import GoldSrcShaderMode2
+from SourceIO.blender_bindings.material_loader.shaders.goldsrc_shaders.goldsrc_shader_mode5 import GoldSrcShaderMode5
+from SourceIO.blender_bindings.utils.bpy_utils import (add_material, get_or_create_collection,
+                                                       get_or_create_material, is_blender_4_3)
 from SourceIO.library.goldsrc.bsp.bsp_file import BspFile
 from SourceIO.library.goldsrc.bsp.lump import LumpType
 from SourceIO.library.goldsrc.bsp.lumps.edge_lump import EdgeLump
@@ -18,22 +25,11 @@ from SourceIO.library.goldsrc.bsp.lumps.vertex_lump import VertexLump
 from SourceIO.library.goldsrc.bsp.structs.texture import TextureInfo
 from SourceIO.library.goldsrc.rad import convert_light_value, parse_rad
 from SourceIO.library.models.mdl.v10.structs.texture import StudioTexture
-from SourceIO.library.shared.content_manager.manager import ContentManager
+from SourceIO.library.shared.content_manager import ContentManager
 from SourceIO.library.shared.content_manager.providers.goldsrc_content_provider import GoldSrcWADContentProvider
+from SourceIO.library.utils import backwalk_file_resolver, TinyPath
 from SourceIO.library.utils.math_utilities import deg2rad, parse_hammer_vector
-from SourceIO.library.utils.path_utilities import backwalk_file_resolver
-from SourceIO.library.utils.tiny_path import TinyPath
 from SourceIO.logger import SourceLogMan
-from ...goldsrc.bsp.entity_handlers import entity_handlers
-from ...material_loader.shaders.goldsrc_shaders.goldsrc_shader import \
-    GoldSrcShader
-from ...material_loader.shaders.goldsrc_shaders.goldsrc_shader_mode1 import \
-    GoldSrcShaderMode1
-from ...material_loader.shaders.goldsrc_shaders.goldsrc_shader_mode2 import \
-    GoldSrcShaderMode2
-from ...material_loader.shaders.goldsrc_shaders.goldsrc_shader_mode5 import \
-    GoldSrcShaderMode5
-from ...utils.bpy_utils import add_material, get_or_create_collection, get_or_create_material
 
 log_manager = SourceLogMan()
 
@@ -248,11 +244,8 @@ class BSP:
                         if len(game_wad_path) == 0:
                             continue
                         game_wad_path = backwalk_file_resolver(self.map_path, TinyPath(game_wad_path))
-                        wad_file = self.bsp_file.manager.find_path(game_wad_path)
-                        if wad_file:
-                            self.bsp_file.manager.register_content_provider(
-                                f'{game_wad_path.parent.stem}_{game_wad_path.stem}',
-                                GoldSrcWADContentProvider(wad_file))
+                        if game_wad_path.exists():
+                            self.bsp_file.manager.add_child(GoldSrcWADContentProvider(game_wad_path))
                 elif entity_class.startswith('monster_') and 'model' in entity:
                     from .entity_handlers import handle_generic_model_prop
                     entity_collection = self.get_collection(entity_class)
@@ -391,9 +384,10 @@ class BSP:
                     else:
                         loader = GoldSrcShader(studio_texture)
                     loader.create_nodes(mode_mat, rad_data)
-                    if render_mode < 255:
-                        mode_mat.blend_method = 'HASHED'
-                        mode_mat.shadow_method = 'HASHED'
+                    if not is_blender_4_3():
+                        if render_mode < 255:
+                            mode_mat.blend_method = 'HASHED'
+                            mode_mat.shadow_method = 'HASHED'
                 model_object.data.materials[model_material_index] = mode_mat
 
     def _get_light_angles(self, entity_data):

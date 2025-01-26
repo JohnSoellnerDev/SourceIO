@@ -2,34 +2,27 @@ from collections import Counter
 from hashlib import md5
 from typing import Optional, TypeVar, Union
 
-from SourceIO.library.shared.content_manager.provider import ContentProvider
 from SourceIO.library.shared.content_manager.detectors import detect_game
-from .providers import register_provider
-from .providers.hfs_provider import HFS1ContentProvider, HFS2ContentProvider
-from .providers.loose_files import LooseFilesContentProvider
-from .providers.source1_gameinfo_provider import Source1GameInfoProvider
-from .providers.source2_gameinfo_provider import Source2GameInfoProvider
-from .providers.zip_content_provider import ZIPContentProvider
-from ...utils.tiny_path import TinyPath
-from ....library.utils.path_utilities import (backwalk_file_resolver,
-                                              corrected_path, get_mod_path)
-from ....logger import SourceLogMan
-from ...utils import Buffer, FileBuffer
-from ...utils.singleton import SingletonMeta
-# from SourceIO.library.shared.content_manager.providers.zip_content_provider import ZIPContentProvider
-# from SourceIO.library.shared.content_manager.providers.hfs_provider import HFS1ContentProvider, HFS2ContentProvider
-# from SourceIO.library.shared.content_manager.providers.non_source_sub_manager import NonSourceContentProvider
-# from SourceIO.library.shared.content_manager.providers.source1_content_provider import \
-#     GameinfoContentProvider as Source1GameinfoContentProvider
-# from SourceIO.library.shared.content_manager.providers.source2_content_provider import \
-#     Gameinfo2ContentProvider as Source2GameinfoContentProvider
+from SourceIO.library.shared.content_manager.provider import ContentProvider
+from SourceIO.library.shared.content_manager.providers import register_provider
+from SourceIO.library.shared.content_manager.providers.hfs_provider import HFS1ContentProvider, HFS2ContentProvider
+from SourceIO.library.shared.content_manager.providers.loose_files import LooseFilesContentProvider
+from SourceIO.library.shared.content_manager.providers.source1_gameinfo_provider import Source1GameInfoProvider
+from SourceIO.library.shared.content_manager.providers.source2_gameinfo_provider import Source2GameInfoProvider
 from SourceIO.library.shared.content_manager.providers.vpk_provider import VPKContentProvider
+from SourceIO.library.shared.content_manager.providers.zip_content_provider import ZIPContentProvider
+from SourceIO.library.utils import Buffer, FileBuffer, TinyPath, backwalk_file_resolver
+from SourceIO.library.utils.path_utilities import get_mod_path
+from SourceIO.library.utils.singleton import SingletonMeta
+from SourceIO.logger import SourceLogMan
 
 log_manager = SourceLogMan()
 logger = log_manager.get_logger('ContentManager')
 
 AnyContentDetector = TypeVar('AnyContentDetector', bound='ContentDetector')
 AnyContentProvider = TypeVar('AnyContentProvider', bound='ContentProvider')
+
+MAX_CACHE_SIZE = 16
 
 
 def get_loose_file_fs_root(path: TinyPath):
@@ -64,6 +57,8 @@ class ContentManager(ContentProvider, metaclass=SingletonMeta):
     def get_steamid_from_asset(self, asset_path: TinyPath) -> ContentProvider | None:
         if asset_path.is_absolute():
             asset_path = self.get_relative_path(asset_path)
+        if asset_path is None:
+            return None
         for child in self.children:
             if provider := child.get_steamid_from_asset(asset_path):
                 return provider
@@ -72,6 +67,7 @@ class ContentManager(ContentProvider, metaclass=SingletonMeta):
         super().__init__(TinyPath("."))
         self.children: list[ContentProvider] = []
         self._steam_id = -1
+        self._cache: dict[TinyPath, Buffer] = {}
 
     def _find_steam_appid(self, path: TinyPath):
         if self._steam_id != -1:
@@ -150,10 +146,17 @@ class ContentManager(ContentProvider, metaclass=SingletonMeta):
             if filepath.exists():
                 return FileBuffer(filepath)
             return None
+        if (buffer := self._cache.get(filepath, None)) is not None:
+            if not buffer.closed:
+                buffer.seek(0)
+                return buffer
         logger.debug(f'Requesting {filepath} file')
         for child in self.children:
             if (file := child.find_file(filepath)) is not None:
                 logger.debug(f'Found in {child}!')
+                self._cache[filepath] = file
+                if len(self._cache) > MAX_CACHE_SIZE:
+                    self._cache.pop(next(iter(self._cache.keys())))
                 return file
         return None
 

@@ -5,10 +5,12 @@ from pprint import pformat
 import bpy
 from mathutils import Euler
 
+from SourceIO.blender_bindings.utils.texture_utils import check_texture_cache
+from SourceIO.library.source2.blocks.kv3_block import KVBlock
 from .base_entity_classes import *
 from SourceIO.blender_bindings.source2.vtex_loader import import_texture
 from SourceIO.blender_bindings.utils.bpy_utils import get_or_create_collection
-from SourceIO.library.shared.content_manager.manager import ContentManager
+from SourceIO.library.shared.content_manager import ContentManager
 from SourceIO.library.source2 import CompiledMaterialResource, CompiledTextureResource
 from SourceIO.library.utils.math_utilities import SOURCE2_HAMMER_UNIT_TO_METERS
 from SourceIO.library.utils.tiny_path import TinyPath
@@ -170,7 +172,7 @@ class AbstractEntityHandler:
             if not icon_material_file:
                 return
             vmt = CompiledMaterialResource.from_buffer(icon_material_file, icon_path)
-            data_block, = vmt.get_data_block(block_name='DATA')
+            data_block = vmt.get_block(KVBlock, block_name='DATA')
             if data_block['m_shaderName'] == 'tools_sprite.vfx':
                 path_texture = next((a for a in vmt.get_child_resources() if isinstance(a, str) and ".vtex" in a), None)
                 if path_texture is not None:
@@ -179,7 +181,12 @@ class AbstractEntityHandler:
                         return
                     obj.empty_display_type = 'IMAGE'
                     obj.empty_display_size = 16 * self.scale  # (1 / self.scale)
-                    obj.data = import_texture(image_resource, TinyPath(path_texture))
+                    texture_path = TinyPath(path_texture)
+                    if image_resource is not None:
+                        texture = check_texture_cache(texture_path)
+                        if texture is not None:
+                            obj.data = texture
+                        obj.data = import_texture(image_resource, texture_path)
 
     @staticmethod
     def _create_lines(name, points, closed=False):
@@ -240,3 +247,11 @@ class AbstractEntityHandler:
         self._set_entity_data(obj, properties)
 
         return obj
+
+    def _handle_point_entity(self, entity, entity_raw: dict, subgroup: str, group: str):
+        obj = bpy.data.objects.new(self._get_entity_name(entity), None)
+        self._set_location_and_scale(obj, get_origin(entity_raw))
+        self._set_rotation(obj, get_angles(entity_raw))
+        self._set_icon_if_present(obj, entity)
+        self._set_entity_data(obj, {'entity': entity_raw})
+        self._put_into_collection(subgroup, obj, group)
